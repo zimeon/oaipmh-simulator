@@ -1,0 +1,8 @@
+# Python
+*.pyc
+*~
+*.egg-info
+.coverage
+
+# No real config files in git
+*.cfg
