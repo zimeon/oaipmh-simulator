@@ -17,7 +17,7 @@ Copyright 2016 Simeon Warner
 """
 
 from flask import Flask, request, render_template, flash, session, redirect, url_for, logging, make_response
-
+import json
 import optparse
 import os.path
 import sys
@@ -28,6 +28,7 @@ except ImportError: #python3
     import io
 
 from oaipmh_simulator._version import __version__
+from oaipmh_simulator.repository import Repository
 
 app = Flask(__name__)
 cfg = {}
@@ -46,7 +47,7 @@ def main():
                  help='port to run on (default %default)')
     p.add_option('--path', action='store', default='oai',
                  help='path to run at (default %default)')
-    p.add_option('--datadir', action='store', default='data',
+    p.add_option('--datadir', action='store', default='data/repo1',
                  help='directory in which to look for data (default %default)')
     p.add_option('--no-post', action='store_true',
                  help="do not support POST requests (part of OAI-PMH v2)")
@@ -58,16 +59,21 @@ def main():
         p.print_help()
         return
 
-    app.config['datadir'] = options.datadir
+
     app.config['no_post'] = options.no_post
     app.config['base_url'] = 'http://127.0.0.1:5555/oai'
 
-    app.config['repository_name'] = 'repo-name'
-    app.config['protocol_version'] = '2.0'
-    app.config['admin_email'] = [ 'someone@example.com' ]
-    app.config['earliest_datestamp'] = '1999-01-01'
-    app.config['deleted_record'] = 'no'
-    app.config['granularity'] = 'YYYY-MM-DD'
+    app.config['repo'] = options.datadir
+    json_cfg_file = os.path.join(app.config['repo'],'repo.json')
+    with open(json_cfg_file, 'r') as fh:
+        cfg = json.load(fh)
+    app.config['repository_name'] = cfg.get('repositoryName')
+    app.config['protocol_version'] = cfg.get('protocolVersion')
+    app.config['admin_email'] = cfg.get('adminEmail')
+    app.config['earliest_datestamp'] = cfg.get('earliestDatestamp')
+    app.config['deleted_record'] = cfg.get('deletedRecord')
+    app.config['granularity'] = cfg.get('granularity')
+    
     # to make externally visible set host='0.0.0.0'
     app.run(port=options.port, debug=options.debug)
 
@@ -95,7 +101,7 @@ def serialize_tree(root):
 
 
 def identify():
-    identify_response = os.path.join(app.config['datadir'],'Identify.xml')
+    identify_response = os.path.join(app.config['repo'],'Identify.xml')
     if (os.path.exists(identify_response)):
         logging.info("Override for Identify")
         alert(555)
