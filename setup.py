@@ -62,6 +62,7 @@ setup(
     url='http://github.com/zimeon/oaipmh-simulator',
     install_requires=[
         "defusedxml>=0.4.1",
+        "flask>=0.10.1",
     ],
     test_suite="tests",
     cmdclass={
