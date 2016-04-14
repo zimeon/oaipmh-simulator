@@ -1,15 +1,15 @@
-"""Setup for OAI-PMH simulator."""
+"""Setup for oaipmh-simulator."""
 from setuptools import setup, Command
 import os
 # setuptools used instead of distutils.core so that 
 # dependencies can be handled automatically
 
-# Extract version number from _version.py. Here we are very strict
-# about the format of the version string as an extra sanity check.
-# (thanks for comments in 
+# Extract version number from _version.py. Here we 
+# are very strict about the format of the version string 
+# as an extra sanity check. (Thanks for comments in 
 # http://stackoverflow.com/questions/458550/standard-way-to-embed-version-into-python-package )
 import re
-VERSIONFILE="oaipmh-simulator/_version.py"
+VERSIONFILE="oaipmh_simulator/_version.py"
 verfilestr = open(VERSIONFILE, "rt").read()
 match = re.search(r"^__version__ = '(\d\.\d.\d+(\.\d+)?)'", verfilestr, re.MULTILINE)
 if match:
@@ -33,40 +33,37 @@ class Coverage(Command):
 
     def run(self):
         """Run coverage program."""
-        os.system("coverage run --source=xxx setup.py test")
+        os.system("coverage run --source=oaipmh-simulator.py,oaipmh_simulator setup.py test")
         os.system("coverage report")
         os.system("coverage html")
         print("See htmlcov/index.html for details.")
 
 setup(
-    name='oaipmh-validation-service',
+    name='oaipmh-simulator',
     version=version,
-    author='Simeon Warner',
-    author_email='simeon.warner@cornell.edu',
-    packages=[],
-    scripts=[],
-    classifiers=["Development Status :: 3 - Alpha",
+    packages=['oaipmh_simulator'],
+    scripts=['oaipmh-simulator.py'],
+    classifiers=["Development Status :: 4 - Beta",
                  "Intended Audience :: Developers",
-                 "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+                 "License :: OSI Approved :: Apache Software License",
                  "Operating System :: OS Independent", #is this true? know Linux & OS X ok
                  "Programming Language :: Python",
                  "Programming Language :: Python :: 2.7",
+                 "Programming Language :: Python :: 3.3",
+                 "Programming Language :: Python :: 3.4",
+                 "Programming Language :: Python :: 3.5",
                  "Topic :: Internet :: WWW/HTTP",
                  "Topic :: Software Development :: Libraries :: Python Modules",
                  "Environment :: Web Environment"],
-    url='https://github.com/zimeon/oaipmh-simulator',
-    license='LICENSE.txt',
+    author='Simeon Warner',
+    author_email='simeon.warner@cornell.edu',
     description='OAI-PMH Simulator',
     long_description=open('README').read(),
+    url='http://github.com/zimeon/oaipmh-simulator',
     install_requires=[
-        "Flask",
-        "Flask-WTF",
-        "wtforms",
+        "defusedxml>=0.4.1",
     ],
     test_suite="tests",
-    tests_require=[
-        "testfixtures",
-    ],
     cmdclass={
         'coverage': Coverage,
     },

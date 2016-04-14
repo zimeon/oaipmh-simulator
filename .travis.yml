@@ -1,0 +1,17 @@
+language: python
+python:
+  - "2.7"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+# command to install dependencies
+install:
+  - pip install coveralls pep257
+  - python setup.py install
+# command to run tests
+script:
+  - py.test
+  - pep257 *.py oaipmh_simulator/*.py
+  - coverage run --source=oaipmh_simulator setup.py test
+after_success:
+  - coveralls

@@ -3,6 +3,6 @@
 *~
 *.egg-info
 .coverage
-
+htmlcov
 # No real config files in git
 *.cfg
