@@ -115,7 +115,7 @@ def serialize_tree(root):
     return(xml_buf.getvalue())
 
 def make_xml_response(root):
-    """Make Flash Response for XML tree."""
+    """Make Flask Response for XML tree."""
     response = make_response( serialize_tree(root) )
     response.headers['Content-type'] = 'application/xml'
     return( response )
