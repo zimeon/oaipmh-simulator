@@ -1,7 +1,7 @@
 import unittest
 from oaipmh_simulator.repository import Repository, Item, Record
 
-class TestUtill(unittest.TestCase):
+class TestRepository(unittest.TestCase):
 
     def test01_repository_init(self):
         r = Repository()
