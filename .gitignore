@@ -4,5 +4,7 @@
 *.egg-info
 .coverage
 htmlcov
+build
+dist
 # No real config files in git
 *.cfg
