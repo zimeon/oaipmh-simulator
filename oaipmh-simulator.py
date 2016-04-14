@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""OAI-PMH Simulator oaipmh_simulator.
+"""OAI-PMH Simulator oaipmh-simulator.
 
 Copyright 2016 Simeon Warner
 
@@ -29,13 +29,13 @@ except ImportError: #python3
     import io
 
 from oaipmh_simulator._version import __version__
-from oaipmh_simulator.repository import Repository
+from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgument, sanitize
 
 app = Flask(__name__)
 cfg = {}
 
 def main():
-
+    """Command line simulator setup."""
     if (sys.version_info < (2,6)):
         sys.exit("This program requires python version 2.6 or later")
     
@@ -74,13 +74,21 @@ def main():
     app.run(port=options.port, debug=options.debug)
 
 def base_tree(verb, base_url):
+    """Create start of XML tree for OAI-PMH response.
+
+    This format applies to all OAI-PMH responses. Note that although
+    OAI-PMH responses are XML, there are a number of rather more specific
+    stipulations about namespaces that _MUST_ be used and such. See:
+    https://www.openarchives.org/OAI/openarchivesprotocol.html#XMLResponse
+    """
     root = Element('OAI-PMH', 
                    {'xmlns': 'http://www.openarchives.org/OAI/2.0/',
                     'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
                     'xsi:schemaLocation': 'http://www.openarchives.org/OAI/2.0/ http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd'
                     } )
-    root.append(Element('responseDate',text='2002-02-08T12:00:01Z')) #FIXME
-    root.append(Element('request', {'verb': verb}, text=base_url ))
+    TextSubElement( root, 'responseDate', '2002-02-08T12:00:01Z')
+    req = SubElement( root, 'request', {} if verb is None else {'verb': verb} )
+    req.text = base_url
     return(root)
 
 def add_header(parent, record):
@@ -95,7 +103,7 @@ def add_metadata(parent, record):
     #TextSubElement( header, 'identifier', record.identifier )
   
 def serialize_tree(root):
-    # have tree, now serialize
+    """Serialize XML tree from root."""
     tree = ElementTree(root);
     xml_buf=io.StringIO()
     if (sys.version_info < (2,7)):
@@ -119,7 +127,7 @@ def TextSubElement( parent, tag, text=None ):
        SubElement( parent, tag).text = text
 
 def identify(repo):
-    """Make a Identify response
+    """Make Identify response.
 
     http://www.openarchives.org/OAI/openarchivesprotocol.html#Identify
     """
@@ -178,14 +186,44 @@ def list_records(repo, resumptionToken=None, **select_args):
             add_metadata( resp, r )
         return make_xml_response( root )
 
+def list_metadata_formats(repo, identifier=None):
+    """Make ListMetadataFormats response.
+
+    https://www.openarchives.org/OAI/openarchivesprotocol.html#ListMetadataFormats
+    """
+    if (identifier is not None):
+        metadata_formats = repo.select_item( identifier ).metadata_formats()
+    else:
+        metadata_formats = repo.metadata_formats()
+    root = base_tree(verb='ListMetadataFormats', base_url=app.config['base_url'])
+    resp = SubElement( root, 'ListMetadataFormats' )
+    for m in metadata_formats:
+        mf = SubElement( resp, 'metadataFormat' )
+        TextSubElement( mf, 'metadataPrefix', m )
+        # FIXME - add other data
+    return make_xml_response( root )
+
+def list_sets(repo):
+    """Make ListSets response.
+
+    https://www.openarchives.org/OAI/openarchivesprotocol.html#ListSets
+
+    Technically, this request can have a resumptionToken but this
+    is not implemented here.
+    """
+    root = base_tree(verb='ListSets', base_url=app.config['base_url'])
+    resp = SubElement( root, 'ListSets' )
+    for set_spec in repo.set_specs():
+        set_element = SubElement( resp, 'set' )
+        TextSubElement( set_element, 'setSpec', set_spec )
+        # FIXME - add other data
+    return make_xml_response( root )
+
 @app.route("/")
 def index():
+    """Render index page for server."""
     return render_template('index.html',
                            base_url=app.config['base_url'])
-
-@app.route("/give404")
-def give404():
-    alert(404)
 
 @app.route("/oai", methods=("GET","POST")) #fixme - should be set
 def oaisrv():
@@ -201,19 +239,29 @@ def oaisrv():
     identifier = args.get('identifier')
     metadataPrefix = args.get('metadataPrefix')
     # What to do?
-    repo = app.config['repo']
-    if (verb == 'Identify'):
-        return identify(repo)
-    elif (verb == 'GetRecord'):
-        return get_record(repo, identifier, metadataPrefix)
-    elif (verb == 'ListIdentifiers'):
-        return list_identifiers(repo)
-    elif (verb == 'ListRecords'):
-        return list_records(repo)
-    return render_template("bad_request.xml",
-                           verb=verb,
-                           code='BadRequest',
-                           message='oops')
+    try:
+        repo = app.config['repo']
+        if (verb == 'Identify'):
+            return identify(repo)
+        elif (verb == 'GetRecord'):
+            return get_record(repo, identifier, metadataPrefix)
+        elif (verb == 'ListIdentifiers'):
+            return list_identifiers(repo)
+        elif (verb == 'ListRecords'):
+            return list_records(repo)
+        elif (verb == 'ListMetadataFormats'):
+            return list_metadata_formats(repo, identifier)
+        elif (verb == 'ListSets'):
+            return list_sets(repo)
+        else:
+            bad_verb=verb
+            verb=None
+            raise BadArgument(verb=bad_verb)
+    except OAI_PMH_Exception as e:
+        root = base_tree(verb=verb, base_url=app.config['base_url'])
+        err = SubElement( root, 'error', {'code': e.code} )
+        err.text = str(e)
+        return make_xml_response( root )
 
 if __name__ == "__main__":
     main()

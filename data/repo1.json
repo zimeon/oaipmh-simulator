@@ -7,14 +7,15 @@
   "granularity": "YYYY-MM-DD",
   "records": [
       { "identifier": "item1",
-	"datestamp": "2001-01-01",
-	"metadataPrefix": "oai_dc",
-	"metadata": "<md>something</md>"
+      	"datestamp": "2001-01-01",
+      	"metadataPrefix": "oai_dc",
+      	"metadata": "<md>something</md>",
+        "sets": "a"
       },
       { "identifier": "item2",
-	"datestamp": "2001-01-02",
-	"metadataPrefix": "oai_dc",
-	"metadata": "<md>something else</md>"
+      	"datestamp": "2001-01-02",
+      	"metadataPrefix": "oai_dc",
+      	"metadata": "<md>something else</md>"
       }
   ]
 }
