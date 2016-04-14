@@ -83,6 +83,17 @@ def base_tree(verb, base_url):
     root.append(Element('request', {'verb': verb}, text=base_url ))
     return(root)
 
+def add_header(parent, record):
+    """Add OAI-PMH <header> block under parent in XML."""
+    header = SubElement( parent, 'header' )
+    TextSubElement( header, 'identifier', record.identifier )
+    TextSubElement( header, 'datestamp', record.datestamp )
+
+def add_metadata(parent, record):
+    """Add OAI-PMH <metadata> block under parent in XML."""
+    metadata = SubElement( parent, 'metadata' )
+    #TextSubElement( header, 'identifier', record.identifier )
+  
 def serialize_tree(root):
     # have tree, now serialize
     tree = ElementTree(root);
@@ -94,6 +105,12 @@ def serialize_tree(root):
     else:
         tree.write(xml_buf,encoding="unicode",xml_declaration=True,method='xml')
     return(xml_buf.getvalue())
+
+def make_xml_response(root):
+    """Make Flash Response for XML tree."""
+    response = make_response( serialize_tree(root) )
+    response.headers['Content-type'] = 'application/xml'
+    return( response )
 
 def TextSubElement( parent, tag, text=None ):
     """Add element named tag with content text iff text not None."""
@@ -116,9 +133,19 @@ def identify(repo):
     TextSubElement( resp, 'earliestDatestamp', repo.earliest_datestamp )
     TextSubElement( resp, 'deletedRecord', repo.deleted_record )
     TextSubElement( resp, 'granularity', repo.granularity )
-    response = make_response( serialize_tree(root) )
-    response.headers['Content-type'] = 'application/xml'
-    return(response)
+    return make_xml_response( root )
+
+def get_record(repo, identifier, metadataPrefix ):
+    """Mage GetRecord response.
+
+    http://www.openarchives.org/OAI/openarchivesprotocol.html#GetRecord
+    """
+    record = repo.select_record( identifier, metadataPrefix )
+    root = base_tree( verb='GetRecord', base_url=app.config['base_url'] )
+    resp = SubElement( root, 'GetRecord' )
+    add_header( resp, record )
+    add_metadata( resp, record )
+    return make_xml_response( root )
 
 def list_identifiers(repo, resumptionToken=None, **select_args):
     """Make ListIdentifiers response.
@@ -132,12 +159,24 @@ def list_identifiers(repo, resumptionToken=None, **select_args):
         root = base_tree(verb='ListIdentifiers', base_url=app.config['base_url'])
         resp = SubElement( root, 'ListIdentifiers' )
         for r in records:
-            header = SubElement( resp, 'header' )
-            TextSubElement( header, 'identifier', r.identifier )
-            TextSubElement( header, 'datestamp', r.datestamp )
-        response = make_response( serialize_tree(root) )
-        response.headers['Content-type'] = 'application/xml'
-        return(response)
+            add_header( resp, r )
+        return make_xml_response( root )
+
+def list_records(repo, resumptionToken=None, **select_args):
+    """Make ListRecords response.
+
+    http://www.openarchives.org/OAI/openarchivesprotocol.html#ListRecords
+    """
+    if (resumptionToken is not None):
+        alert(400) # don't support yet
+    else:
+        records = repo.select_records(select_args)
+        root = base_tree(verb='ListIdentifiers', base_url=app.config['base_url'])
+        resp = SubElement( root, 'ListIdentifiers' )
+        for r in records:
+            add_header( resp, r )
+            add_metadata( resp, r )
+        return make_xml_response( root )
 
 @app.route("/")
 def index():
@@ -159,12 +198,18 @@ def oaisrv():
         args = request.form
     # Now get the params
     verb = args.get('verb')
+    identifier = args.get('identifier')
+    metadataPrefix = args.get('metadataPrefix')
     # What to do?
     repo = app.config['repo']
     if (verb == 'Identify'):
         return identify(repo)
+    elif (verb == 'GetRecord'):
+        return get_record(repo, identifier, metadataPrefix)
     elif (verb == 'ListIdentifiers'):
         return list_identifiers(repo)
+    elif (verb == 'ListRecords'):
+        return list_records(repo)
     return render_template("bad_request.xml",
                            verb=verb,
                            code='BadRequest',

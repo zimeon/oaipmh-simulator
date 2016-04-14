@@ -30,10 +30,6 @@ class Repository(object):
         self.earliest_datestamp = None
         self.deleted_record = 'no'
         self.granularity = 'YYYY-MM-DD'
-        # Config
-        self.exclude_files = ['.*.json']
-        self.exclude_dirs = ['CVS','.git']
-        self.include_symlinks = False
         # Used internally only:
         self.logger = logging.getLogger('oaipmh_simulator')
         self.compiled_exclude_files = []
@@ -49,25 +45,41 @@ class Repository(object):
             for r in cfg.get('records',[]):
                 # Make for find Item
                 identifier = r.get('identifier')
+                self.logger.warn( "Adding %s" % (identifier) )
                 if (identifier in self.items):
                     item = self.items[identifier]
                     # fixme, check other data
                 else:
                     item = Item( identifier=identifier, sets=r.get('sets') )
-                    self.add(item)
+                    self.add_item(item)
                 # Now add the Record data
                 record = Record( identifier=identifier,
+                                 metadataPrefix=r.get('metadataPrefix'),
                                  datestamp=r.get('datestamp'),
                                  status=r.get('status'),
                                  metadata=r.get('metadata'),
                                  about=r.get('about') )
-                item.add_record( record=record, metadataPrefix=r.get('metadataPrefix') )
+                item.add_record( record )
             # Stats...
             self.logger.warn("Repository initialized: %d items" % (len(self.items)))
 
-    def add(self, item):
-        """Add and Item to the repository."""
+    def add_item(self, item):
+        """Add an Item to the repository."""
         self.items[item.identifier] = item
+
+    def select_record( self, identifier=None, metadataPrefix=None ):
+        """Select record based on identifier and metadataPrefix.
+
+        Raise appropriate exception if the specified record is not
+        available.
+        """
+        self.logger.warn("id=%s mp=%s %s" % (identifier,metadataPrefix,str(self.items.keys())) )
+        if (identifier not in self.items):
+            raise IdDoesNotExist(identifier)
+        item = self.items[identifier]
+        if (metedataPrefix not in item.records):
+            raise CannotDisseminateFormat(metadataPrefix)
+        return( record )
 
     def select_records( self, sfrom=None, suntil=None, smetadataPrefix=None, sset=None ):
         records = []
@@ -79,7 +91,7 @@ class Repository(object):
 
 class Item(object):
 
-    def __init__(self, identifier=None, sets=None):
+    def __init__(self, identifier, sets=None):
         """Create Item object.
 
         An item has zero or more records which must each be in a 
@@ -91,17 +103,30 @@ class Item(object):
         self.records = {}
         self.sets = set() if sets is None else sets
 
-    def add_record(self, record=None, metadataPrefix='oai_dc'):
+    def add_record(self, record ):
         """Add Record in specific metadataPrefix format to this Item."""
-        self.records[metadataPrefix] = record
+        self.records[record.metadataPrefix] = record
 
 
 class Record(object):
 
-    def __init__(self, identifier=None, datestamp=None, status=None, metadata=None, about=None):
+    def __init__(self, identifier, metadataPrefix='oai_dc', datestamp=None, status=None, metadata=None, about=None):
         """Create a Record object."""
         self.identifier = identifier
+        self.metadataPrefix = metadataPrefix
         self.datestamp = datestamp
         self.status = status
         self.metadata = metadata
         self.about = set() if about is None else about
+
+
+class CannotDisseminateFormat(Exception):
+
+    def __init__(self, metadataPrefix=''):
+        pass
+
+class IdDoesNotExist(Exception):
+
+    def __init__(self, identifier=''):
+        pass
+
