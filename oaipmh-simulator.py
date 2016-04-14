@@ -135,7 +135,7 @@ def identify(repo):
     TextSubElement( resp, 'granularity', repo.granularity )
     return make_xml_response( root )
 
-def get_record(repo, identifier, metadataPrefix ):
+def get_record(repo, identifier, metadataPrefix):
     """Mage GetRecord response.
 
     http://www.openarchives.org/OAI/openarchivesprotocol.html#GetRecord

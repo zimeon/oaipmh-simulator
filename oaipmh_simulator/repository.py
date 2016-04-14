@@ -23,7 +23,7 @@ class Repository(object):
     def __init__(self, cfg=None):
         """Create Repository object.
         """
-        self.items = {} #index by identifier
+        self.items = dict() #index by identifier
         self.repository_name = None
         self.protocol_version = None
         self.admin_email = []
@@ -73,13 +73,13 @@ class Repository(object):
         Raise appropriate exception if the specified record is not
         available.
         """
-        self.logger.warn("id=%s mp=%s %s" % (identifier,metadataPrefix,str(self.items.keys())) )
+        self.logger.warn("id=%s mp=%s %s" % (identifier,metadataPrefix,str(self.items)) )
         if (identifier not in self.items):
             raise IdDoesNotExist(identifier)
         item = self.items[identifier]
-        if (metedataPrefix not in item.records):
+        if (metadataPrefix not in item.records):
             raise CannotDisseminateFormat(metadataPrefix)
-        return( record )
+        return( item.records[metadataPrefix] )
 
     def select_records( self, sfrom=None, suntil=None, smetadataPrefix=None, sset=None ):
         records = []
@@ -99,7 +99,7 @@ class Item(object):
 
         An item may be in zero or more sets.
         """
-        self.identifier = identifier,
+        self.identifier = identifier
         self.records = {}
         self.sets = set() if sets is None else sets
 
