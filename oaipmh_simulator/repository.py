@@ -1,4 +1,4 @@
-"""Repositoty for OAI-PMH simulator."""
+"""Repository for OAI-PMH simulator."""
 
 import os
 import os.path
@@ -14,105 +14,72 @@ from defusedxml.ElementTree import parse
 
 class Repository(object):
 
-    """Repositoty for OAI-PMH simulator.
+    """Repository for OAI-PMH simulator.
 
     Within OAI-PMH, there are items with identifiers. Each item may
     have metadata available in zero or more formats/
     """
 
-    def __init__(self):
+    def __init__(self, cfg=None):
         """Create Repository object.
         """
-        self.items = set()
+        self.items = {} #index by identifier
+        self.repository_name = None
+        self.protocol_version = None
+        self.admin_email = []
+        self.earliest_datestamp = None
+        self.deleted_record = 'no'
+        self.granularity = 'YYYY-MM-DD'
         # Config
-        self.set_path = set_path
         self.exclude_files = ['.*.json']
         self.exclude_dirs = ['CVS','.git']
         self.include_symlinks = False
         # Used internally only:
         self.logger = logging.getLogger('oaipmh_simulator')
         self.compiled_exclude_files = []
+        # Do we have config?
+        self.cfg = cfg
+        if (cfg):
+            self.repository_name = cfg.get('repositoryName')
+            self.protocol_version = cfg.get('protocolVersion')
+            self.admin_email = cfg.get('adminEmail')
+            self.earliest_datestamp = cfg.get('earliestDatestamp')
+            self.deleted_record = cfg.get('deletedRecord')
+            self.granularity = cfg.get('granularity')
+            for r in cfg.get('records',[]):
+                # Make for find Item
+                identifier = r.get('identifier')
+                if (identifier in self.items):
+                    item = self.items[identifier]
+                    # fixme, check other data
+                else:
+                    item = Item( identifier=identifier, sets=r.get('sets') )
+                    self.add(item)
+                # Now add the Record data
+                record = Record( identifier=identifier,
+                                 datestamp=r.get('datestamp'),
+                                 status=r.get('status'),
+                                 metadata=r.get('metadata'),
+                                 about=r.get('about') )
+                item.add_record( record=record, metadataPrefix=r.get('metadataPrefix') )
+            # Stats...
+            self.logger.warn("Repository initialized: %d items" % (len(self.items)))
 
     def add(self, item):
         """Add and Item to the repository."""
-        self.items.add(item)
+        self.items[item.identifier] = item
 
-    def add_exclude_files(self, exclude_patterns):
-        """Add more patterns of files to exclude while building resource_list."""
-        for pattern in exclude_patterns:
-            self.exclude_files.append(pattern)
-
-    def compile_excludes(self):
-        """Compile a set of regexps for files to be exlcuded from scans."""
-        self.compiled_exclude_files = []
-        for pattern in self.exclude_files:
-            try:
-                self.compiled_exclude_files.append(re.compile(pattern))
-            except re.error as e:
-                raise ValueError("Bad python regex in exclude '%s': %s" % (pattern,str(e)))
-
-    def exclude_file(self, file):
-        """True if file should be exclude based on name pattern."""
-        for pattern in self.compiled_exclude_files:
-            if (pattern.match(file)):
-                return(True)
-        return(False)
-
-    def from_disk(self, path='data'):
-        """Fill repositoty from disk.
-
-        Scans files under path looking for records with which to
-        build the repository.
-        """
-        # Compile exclude pattern matches
-        self.compile_excludes()
-        # is path a directory or a file? for each file: create Resource object, 
-        # add, increment counter
-        if os.path.isdir(path):
-            num_files=0
-            for dirpath, dirs, files in os.walk(path,topdown=True):
-                for file_in_dirpath in files:
-                    num_files+=1
-                    if (num_files%50000 == 0):
-                        self.logger.info("Repository.from_disk: %d files..." % (num_files))
-                    self.add_file(dir=dirpath,file=file_in_dirpath)
-                    # prune list of dirs based on self.exclude_dirs
-                    for exclude in self.exclude_dirs:
-                        if exclude in dirs:
-                            self.logger.debug("Excluding dir %s" % (exclude))
-                            dirs.remove(exclude)
-        else:
-            # single file
-            self.add_file(file=path)
-
-    def add_file(self, dir=None, file=None):
-        """Add a single file to this Repository.
-        
-        Follows object settings of set_path.
-        """
-        try:
-            if self.exclude_file(file):
-                self.logger.debug("Excluding file %s" % (file))
-                return
-            # get abs filename and also URL
-            if (dir is not None):
-                file = os.path.join(dir,file)
-            if (not os.path.isfile(file) or not (self.include_symlinks or not os.path.islink(file))):
-                return
-            file_stat=os.stat(file)
-        except OSError as e:
-            sys.stderr.write("Ignoring file %s (error: %s)" % (file,str(e)))
-            return
-        r = Resource(uri=uri)
-        if (self.set_path):
-            # add full local path
-            r.path=file
-        self.add(r)
+    def select_records( self, sfrom=None, suntil=None, smetadataPrefix=None, sset=None ):
+        records = []
+        for i in self.items.values():
+            for r in i.records.values():
+                records.append(r)
+        return( records )
 
 
 class Item(object):
 
-    def __init__(self):
+    def __init__(self, identifier=None, sets=None):
         """Create Item object.
 
         An item has zero or more records which must each be in a 
@@ -120,15 +87,21 @@ class Item(object):
 
         An item may be in zero or more sets.
         """
-        self.id = None
+        self.identifier = identifier,
         self.records = {}
-        self.sets = set()
+        self.sets = set() if sets is None else sets
+
+    def add_record(self, record=None, metadataPrefix='oai_dc'):
+        """Add Record in specific metadataPrefix format to this Item."""
+        self.records[metadataPrefix] = record
+
 
 class Record(object):
 
-    def __init__(self):
+    def __init__(self, identifier=None, datestamp=None, status=None, metadata=None, about=None):
         """Create a Record object."""
-        self.datestamp = None
-        self.status = None
-        self.metadata = None
-        self.about = set()
+        self.identifier = identifier
+        self.datestamp = datestamp
+        self.status = status
+        self.metadata = metadata
+        self.about = set() if about is None else about

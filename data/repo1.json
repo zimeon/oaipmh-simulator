@@ -1,0 +1,19 @@
+{
+  "repositoryName": "repo-name",
+  "protocolVersion": "2.0",
+  "adminEmail": [ "someone@example.com", "another@example.com" ],
+  "earliestDatestamp": "1999-01-01",
+  "deletedRecord": "no",
+  "granularity": "YYYY-MM-DD",
+  "records": [
+      { "identifier": "item1",
+	"datestamp": "2001-01-01",
+	"metadata": "<md>something</md>"
+      },
+      { "identifier": "item2",
+	"datestamp": "2001-01-02",
+	"metadata": "<md>something else</md>"
+      }
+  ]
+}
+

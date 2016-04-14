@@ -18,6 +18,7 @@ Copyright 2016 Simeon Warner
 
 from flask import Flask, request, render_template, flash, session, redirect, url_for, logging, make_response
 import json
+import logging
 import optparse
 import os.path
 import sys
@@ -47,8 +48,8 @@ def main():
                  help='port to run on (default %default)')
     p.add_option('--path', action='store', default='oai',
                  help='path to run at (default %default)')
-    p.add_option('--datadir', action='store', default='data/repo1',
-                 help='directory in which to look for data (default %default)')
+    p.add_option('--repo-json', '-r', action='store', default='data/repo1.json',
+                 help='JSON file describing repository (default %default)')
     p.add_option('--no-post', action='store_true',
                  help="do not support POST requests (part of OAI-PMH v2)")
     p.add_option('--debug', '-d', action='store_true',
@@ -59,21 +60,16 @@ def main():
         p.print_help()
         return
 
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S', level=logging.INFO)
 
     app.config['no_post'] = options.no_post
     app.config['base_url'] = 'http://127.0.0.1:5555/oai'
 
-    app.config['repo'] = options.datadir
-    json_cfg_file = os.path.join(app.config['repo'],'repo.json')
-    with open(json_cfg_file, 'r') as fh:
+    app.config['repo_json'] = options.repo_json
+    with open(app.config['repo_json'], 'r') as fh:
         cfg = json.load(fh)
-    app.config['repository_name'] = cfg.get('repositoryName')
-    app.config['protocol_version'] = cfg.get('protocolVersion')
-    app.config['admin_email'] = cfg.get('adminEmail')
-    app.config['earliest_datestamp'] = cfg.get('earliestDatestamp')
-    app.config['deleted_record'] = cfg.get('deletedRecord')
-    app.config['granularity'] = cfg.get('granularity')
-    
+        app.config['repo'] = Repository( cfg=cfg )
+
     # to make externally visible set host='0.0.0.0'
     app.run(port=options.port, debug=options.debug)
 
@@ -99,31 +95,53 @@ def serialize_tree(root):
         tree.write(xml_buf,encoding="unicode",xml_declaration=True,method='xml')
     return(xml_buf.getvalue())
 
+def TextSubElement( parent, tag, text=None ):
+    """Add element named tag with content text iff text not None."""
+    #FIXME - make handle multiple elements if text is iterable
+    if (text is not None):
+       SubElement( parent, tag).text = text
 
-def identify():
-    identify_response = os.path.join(app.config['repo'],'Identify.xml')
-    if (os.path.exists(identify_response)):
-        logging.info("Override for Identify")
-        alert(555)
+def identify(repo):
+    """Make a Identify response
+
+    http://www.openarchives.org/OAI/openarchivesprotocol.html#Identify
+    """
+    root = base_tree(verb='Identify', base_url=app.config['base_url'])
+    resp = SubElement( root, 'Identify' )
+    TextSubElement( resp, 'repositoryName', repo.repository_name )
+    TextSubElement( resp, 'baseURL', app.config['base_url'] )
+    TextSubElement( resp, 'protocolVersion', repo.protocol_version )
+    for ae in repo.admin_email:
+        TextSubElement( resp, 'adminEmail', ae )
+    TextSubElement( resp, 'earliestDatestamp', repo.earliest_datestamp )
+    TextSubElement( resp, 'deletedRecord', repo.deleted_record )
+    TextSubElement( resp, 'granularity', repo.granularity )
+    response = make_response( serialize_tree(root) )
+    response.headers['Content-type'] = 'application/xml'
+    return(response)
+
+def list_identifiers(repo, resumptionToken=None, **select_args):
+    """Make ListIdentifiers response.
+
+    http://www.openarchives.org/OAI/openarchivesprotocol.html#ListIdentifiers
+    """
+    if (resumptionToken is not None):
+        alert(400) # don't support yet
     else:
-        # Make a simple response
-        root = base_tree(verb='Identify', base_url=app.config['base_url'])
-        resp = SubElement( root, 'Identify' )
-        SubElement( resp, 'repositoryName').text=app.config['repository_name']
-        SubElement( resp, 'baseURL').text=app.config['base_url']
-        SubElement( resp, 'protocolVersion').text=app.config['protocol_version']
-        for ae in app.config['admin_email']:
-            SubElement( resp, 'adminEmail' ).text=ae
-        SubElement( resp, 'earliestDatestamp').text=app.config['earliest_datestamp']
-        SubElement( resp, 'deletedRecord').text=app.config['deleted_record']
-        SubElement( resp, 'granularity').text=app.config['granularity']
+        records = repo.select_records(select_args)
+        root = base_tree(verb='ListIdentifiers', base_url=app.config['base_url'])
+        resp = SubElement( root, 'ListIdentifiers' )
+        for r in records:
+            header = SubElement( resp, 'header' )
+            TextSubElement( header, 'identifier', r.identifier )
+            TextSubElement( header, 'datestamp', r.datestamp )
         response = make_response( serialize_tree(root) )
         response.headers['Content-type'] = 'application/xml'
         return(response)
 
 @app.route("/")
 def index():
-    return render_template("index.html",
+    return render_template('index.html',
                            base_url=app.config['base_url'])
 
 @app.route("/give404")
@@ -142,8 +160,11 @@ def oaisrv():
     # Now get the params
     verb = args.get('verb')
     # What to do?
+    repo = app.config['repo']
     if (verb == 'Identify'):
-        return identify()
+        return identify(repo)
+    elif (verb == 'ListIdentifiers'):
+        return list_identifiers(repo)
     return render_template("bad_request.xml",
                            verb=verb,
                            code='BadRequest',
