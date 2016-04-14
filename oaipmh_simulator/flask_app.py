@@ -18,6 +18,7 @@ from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgume
 app = Flask(__name__)
 
 def get_flask_app():
+    """Get app object."""
     return(app) # FIXME - make this actually create app
 
 def base_tree(verb, base_url):
