@@ -27,8 +27,8 @@ from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgume
 
 def main():
     """Command line simulator setup."""
-    if (sys.version_info < (2,6)):
-        sys.exit("This program requires python version 2.6 or later")
+    if (sys.version_info < (2,7)):
+        sys.exit("This program requires python version 2.7 or later")
     
     # Options and arguments
     p = optparse.OptionParser(description='OAI-PMH simulator',
