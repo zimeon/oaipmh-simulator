@@ -22,7 +22,7 @@ import optparse
 import sys
 
 from oaipmh_simulator._version import __version__
-from oaipmh_simulator.flask_app import get_flask_app
+from oaipmh_simulator.flask_app import get_flask_app, index_handler, oaipmh_baseurl_handler
 from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgument, sanitize
 
 def main():
@@ -55,11 +55,15 @@ def main():
 
     app = get_flask_app()
     app.config['no_post'] = options.no_post
-    app.config['base_url'] = 'http://127.0.0.1:5555/oai'
+    app.config['port'] = options.port
+    app.config['path'] = '/%s' % (options.path) # add leading slash
+    app.config['base_url'] = 'http://127.0.0.1:%d/%s' % (options.port, options.path)
 
     with open(options.repo_json, 'r') as fh:
         app.config['repo'] = Repository( cfg=json.load(fh) )
 
+    app.add_url_rule('/', view_func=index_handler)
+    app.add_url_rule(app.config['path'] , methods=("GET","POST"), view_func=oaipmh_baseurl_handler)
     # to make externally visible set host='0.0.0.0'
     app.run(port=options.port, debug=options.debug)
 

@@ -167,14 +167,12 @@ def list_sets(repo):
         # FIXME - add other data
     return make_xml_response( root )
 
-@app.route("/")
-def index():
+def index_handler():
     """Render index page for server."""
     return render_template('index.html',
                            base_url=app.config['base_url'])
 
-@app.route("/oai", methods=("GET","POST")) #fixme - should be set
-def oaisrv():
+def oaipmh_baseurl_handler():
     """Support requests for OAI-PMH baseURL."""
     if (request.method == 'GET'):
         args = request.args
