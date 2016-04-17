@@ -1,5 +1,7 @@
 """Repository for OAI-PMH simulator."""
 
+from datetime import datetime
+from dateutil import parser as dateutil_parser
 import os
 import os.path
 import re
@@ -51,9 +53,8 @@ class Repository(object):
                 else:
                     item = Item( identifier=identifier, sets=r.get('sets') )
                     self.add_item(item)
-                # Now add the Record data
-                record = Record( identifier=identifier,
-                                 metadataPrefix=r.get('metadataPrefix'),
+                # Now make and add the Record data
+                record = Record( metadataPrefix=r.get('metadataPrefix'),
                                  datestamp=r.get('datestamp'),
                                  status=r.get('status'),
                                  metadata=r.get('metadata'),
@@ -88,15 +89,22 @@ class Repository(object):
             raise CannotDisseminateFormat(metadataPrefix)
         return( item.records[metadataPrefix] )
 
-    def select_records( self, sfrom=None, suntil=None, smetadataPrefix=None, sset=None ):
+    def select_records( self, metadataPrefix=None, **args ):
         """Select records that match parameters.
 
         Used to implement ListIdentifiers and ListRecords.
+
+        WARNING - using **args to deal with 'from' that
+        can't be used as an argument name. Also do the same
+        for 'until' and 'set'.
         """
+        from_ds = Datestamp(args['from']) if 'from' in args else None
+        until_ds = Datestamp(args['until']) if 'until' in args else None
+        set_spec = args['set'] if 'set' in args else None
         records = []
-        for i in self.items.values():
-            for r in i.records.values():
-                records.append(r) # FIXME - no selection yet!
+        for item in self.items.values():
+            for record in item.records.values():
+                records.append(record) # FIXME - no selection yet!
         return( records )
 
     def metadata_formats(self):
@@ -119,8 +127,8 @@ class Repository(object):
         all sets defined.
         """
         set_specs = set()
-        for i in self.items.values():
-            for m in i.set_specs():
+        for item in self.items.values():
+            for m in item.set_specs():
                 if (m not in set_specs):
                     set_specs.add(m)
         if (len(set_specs)==0):
@@ -146,6 +154,7 @@ class Item(object):
     def add_record(self, record ):
         """Add Record in specific metadataPrefix format to this Item."""
         self.records[record.metadataPrefix] = record
+        record.item = self
 
     def metadata_formats(self):
         """List metadataFormats for this item."""
@@ -159,14 +168,61 @@ class Item(object):
 class Record(object):
     """Record in OAI-PMH."""
 
-    def __init__(self, identifier, metadataPrefix='oai_dc', datestamp=None, status=None, metadata=None, about=None):
+    def __init__(self, metadataPrefix='oai_dc', datestamp=None, status=None, metadata=None, about=None, item=None):
         """Create a Record object."""
-        self.identifier = identifier
         self.metadataPrefix = metadataPrefix
         self.datestamp = datestamp
         self.status = status
         self.metadata = metadata
         self.about = set() if about is None else about
+        # Link up to item this record is part of
+        self.item = item
+
+    @property
+    def identifier(self):
+        """Identifier of parent item."""
+        return( self.item.identifier )
+
+    @property
+    def set_specs(self):
+        """The setSpecs for parent item."""
+        return( self.item.set_specs() )
+
+
+class Datestamp(object):
+    """OAI-PMH specific datastamps."""
+
+    def __init__(self, date_str=None, granularity=None):
+        self.date_str = date_str
+        self.granularity = granularity
+        self.datetime = None # parsed value
+        if (self.date_str is not None):
+            self.parse_date_str()
+
+    def parse_date_str(self):
+        """Parse the date string.
+
+        Will raise BadArgument for any error condition. If 
+        self.granularity is set then checks that the date_str
+        matches that.
+        """
+        date_str = self.date_str
+        m = re.match(r'\d\d\d\d-\d\d-\d\d(T\d\d:\d\d:\d\dZ)?$', date_str)
+        if (m):
+            if (m.group(1)):
+                granularity = 'seconds'
+            else:
+                date_str += 'T00:00:00Z'
+                granularity = 'days'
+            try:
+                self.datetime = dateutil_parser.parse(date_str)
+            except ValueError as e:
+                raise BadArgument("Bad datetime %s: %s." % (sanitize(self.date_str), str(e)))
+        else:
+            raise BadArgument("Bad datetime %s, must have either YYYY-MM-DD or YYYY-MM-DDThh:mm:ssZ form." % (sanitize(date_str)))
+        if (self.granularity and self.granularity!=granularity):
+            raise BadArgument("Bad datetime, expected %s granularity and got %s granularity" % (self.granularity,granularity))
+        self.granularity = granularity
 
 class OAI_PMH_Exception(Exception):
     """Superclass for all OAI-PMH Exceptions.
@@ -182,12 +238,28 @@ class OAI_PMH_Exception(Exception):
 class BadArgument(OAI_PMH_Exception):
     """badArgument error."""
 
-    def __init__(self, verb=None):
-        """Initialize BadArgument, record verb in message if given."""
+    def __init__(self, msg=None):
+        """Initialize BadArgument."""
         self.code = "badArgument"
         self.msg = "The request includes illegal arguments, is missing required arguments, includes a repeated argument, or values for arguments have an illegal syntax."
-        if (verb is not None):
+        if (msg is not None):
+            self.msg += " " + msg
+
+
+class BadVerb(OAI_PMH_Exception):
+    """badVerb error."""
+
+    def __init__(self, msg=None, verb=None):
+        """Initialize BadVerb, record verb in message if given."""
+        self.code = "badVerb"
+        self.msg = "Value of the verb argument is not a legal OAI-PMH verb, the verb argument is missing, or the verb argument is repeated."
+        if (verb is None):
+            self.msg += " Missing verb." 
+        else:
             self.msg += " Bad verb (%s)." % sanitize(verb)
+        if (msg is not None):
+            self.msg += " " + msg
+       
 
 class BadResumptionToken(OAI_PMH_Exception):
     """badResumptionToken error."""

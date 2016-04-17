@@ -63,6 +63,7 @@ setup(
     install_requires=[
         "defusedxml>=0.4.1",
         "flask>=0.10.1",
+        "dateutils>=0.6.6",
     ],
     test_suite="tests",
     cmdclass={

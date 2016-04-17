@@ -13,7 +13,7 @@ except ImportError: #python3
     import io
 
 from oaipmh_simulator._version import __version__
-from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgument, sanitize
+from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadVerb, BadArgument, BadResumptionToken, sanitize
 
 app = Flask(__name__)
 
@@ -44,6 +44,8 @@ def add_header(parent, record):
     header = SubElement( parent, 'header' )
     TextSubElement( header, 'identifier', record.identifier )
     TextSubElement( header, 'datestamp', record.datestamp )
+    for set_spec in record.set_specs:
+        TextSubElement( header, 'setSpec', set_spec )
 
 def add_metadata(parent, record):
     """Add OAI-PMH <metadata> block under parent in XML."""
@@ -103,35 +105,18 @@ def get_record(repo, identifier, metadataPrefix):
     add_metadata( resp, record )
     return make_xml_response( root )
 
-def list_identifiers(repo, resumptionToken=None, **select_args):
-    """Make ListIdentifiers response.
-
-    http://www.openarchives.org/OAI/openarchivesprotocol.html#ListIdentifiers
-    """
+def list_either(repo, include_records=True, resumptionToken=None, **select_args):
+    """Make ListRecords or ListIdentifiers response."""
     if (resumptionToken is not None):
-        alert(400) # don't support yet
+        raise BadResumptionToken() # don't support yet
     else:
-        records = repo.select_records(select_args)
+        records = repo.select_records(**select_args)
         root = base_tree(verb='ListIdentifiers', base_url=app.config['base_url'])
         resp = SubElement( root, 'ListIdentifiers' )
-        for r in records:
-            add_header( resp, r )
-        return make_xml_response( root )
-
-def list_records(repo, resumptionToken=None, **select_args):
-    """Make ListRecords response.
-
-    http://www.openarchives.org/OAI/openarchivesprotocol.html#ListRecords
-    """
-    if (resumptionToken is not None):
-        alert(400) # don't support yet
-    else:
-        records = repo.select_records(select_args)
-        root = base_tree(verb='ListIdentifiers', base_url=app.config['base_url'])
-        resp = SubElement( root, 'ListIdentifiers' )
-        for r in records:
-            add_header( resp, r )
-            add_metadata( resp, r )
+        for record in records:
+            add_header( resp, record )
+            if (include_records):
+                add_metadata( resp, record )
         return make_xml_response( root )
 
 def list_metadata_formats(repo, identifier=None):
@@ -167,6 +152,36 @@ def list_sets(repo):
         # FIXME - add other data
     return make_xml_response( root )
 
+def check_args(verb, arguments, optional=None, required=None, exclusive=None):
+    """Check that only arguments allowed are not others are present.
+
+    Will raise BadArgument exception if errors present.
+    """
+    optional = [] if optional is None else optional
+    required = [] if required is None else required
+    # Check exclusive first, if there is an exclusive argument 
+    # allowed and it is present, then there must not be any others
+    if (exclusive is not None and exclusive in arguments):
+        if (len(arguments)>1):
+            raise BadArgument("Exclusive argument (%s) present in addition to other arguments (%s) in %s request" % (exclusive,','.join(sorted(arguments.keys())),verb))
+        else:
+            return # done, just the exclusive argument
+    # Now check nothing except option amd required args
+    allowed = optional+required
+    bad = set()
+    for arg in arguments:
+        if (arg not in allowed):
+            bad.add(arg)
+    if (len(bad)>0):
+        raise BadArgument("Illegal arguments (%s) in %s request" % (','.join(sorted(bad)),verb))
+    # Now check all required args present
+    missing = set()
+    for arg in required:
+        if (arg not in arguments):
+            missing.add(arg)
+    if (len(missing)>0):
+        raise BadArgument("Arguments (%s) required but missing in %s request" % (','.join(sorted(missing)),verb))
+
 def index_handler():
     """Render index page for server."""
     return render_template('index.html',
@@ -180,29 +195,51 @@ def oaipmh_baseurl_handler():
         alert(405) # Method Not Allowed
     else:
         args = request.form
-    # Now get the params
-    verb = args.get('verb')
-    identifier = args.get('identifier')
-    metadataPrefix = args.get('metadataPrefix')
-    # What to do?
     try:
+        # Now get the params
+        verb = args.get('verb')
+        if (verb is None):
+            raise BadVerb(verb=verb)
+        arguments = {}
+        for arg in ['identifier','metadataPrefix','from',
+                    'until','set','resumptionToken']:
+            if (arg in args):
+                arguments[arg] = args.get(arg)
+        if (len(arguments)+1 != len(args)):
+            raise BadArgument("Extra illegal arguments given.")
+        # What to do?
         repo = app.config['repo']
         if (verb == 'Identify'):
-            return identify(repo)
+            check_args( verb, arguments )
+            return identify( repo )
         elif (verb == 'GetRecord'):
-            return get_record(repo, identifier, metadataPrefix)
+            check_args( verb, arguments,
+                        required=['identifier', 'metadataPrefix'] )
+            return get_record( repo, **arguments )
         elif (verb == 'ListIdentifiers'):
-            return list_identifiers(repo)
+            check_args( verb, arguments,
+                        optional=['from','until','set'],
+                        required=['metadataPrefix'],
+                        exclusive='resumptionToken' )
+            return list_either( repo, False, **arguments )
         elif (verb == 'ListRecords'):
-            return list_records(repo)
+            check_args( verb, arguments,
+                        optional=['from','until','set'],
+                        required=['metadataPrefix'],
+                        exclusive='resumptionToken' )
+            return list_either( repo, True, **arguments )
         elif (verb == 'ListMetadataFormats'):
-            return list_metadata_formats(repo, identifier)
+            check_args( verb, arguments,
+                        optional=['identifier'] )
+            return list_metadata_formats( repo, **arguments )
         elif (verb == 'ListSets'):
-            return list_sets(repo)
+            check_args( verb, arguments, 
+                        exclusive='resumptionToken' )
+            return list_sets( repo, **arguments )
         else:
             bad_verb=verb
             verb=None
-            raise BadArgument(verb=bad_verb)
+            raise BadVerb(verb=bad_verb)
     except OAI_PMH_Exception as e:
         root = base_tree(verb=verb, base_url=app.config['base_url'])
         err = SubElement( root, 'error', {'code': e.code} )
