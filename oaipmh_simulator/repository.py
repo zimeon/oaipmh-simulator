@@ -1,7 +1,6 @@
 """Repository for OAI-PMH simulator."""
 
 from datetime import datetime
-from dateutil import parser as dateutil_parser
 import os
 import os.path
 import re
@@ -29,6 +28,7 @@ class Repository(object):
         self.protocol_version = None
         self.admin_email = []
         self.earliest_datestamp = None
+        self.earliest_ds = None
         self.deleted_record = 'no'
         self.granularity = 'YYYY-MM-DD'
         # Used internally only:
@@ -41,12 +41,14 @@ class Repository(object):
             self.protocol_version = cfg.get('protocolVersion')
             self.admin_email = cfg.get('adminEmail')
             self.earliest_datestamp = cfg.get('earliestDatestamp')
+            if (self.earliest_datestamp):
+                self.earliest_ds = Datestamp(self.earliest_datestamp)
             self.deleted_record = cfg.get('deletedRecord')
             self.granularity = cfg.get('granularity')
             for r in cfg.get('records',[]):
                 # Make for find Item
                 identifier = r.get('identifier')
-                self.logger.warn( "Adding %s" % (identifier) )
+                self.logger.info( "Adding %s" % (identifier) )
                 if (identifier in self.items):
                     item = self.items[identifier]
                     # fixme, check other data
@@ -61,7 +63,7 @@ class Repository(object):
                                  about=r.get('about') )
                 item.add_record( record )
             # Stats...
-            self.logger.warn("Repository initialized: %d items" % (len(self.items)))
+            self.logger.info("Repository initialized: %d items" % (len(self.items)))
 
     def add_item(self, item):
         """Add an Item to the repository."""
@@ -83,7 +85,6 @@ class Repository(object):
         Raise appropriate exception if the specified record is not
         available.
         """
-        self.logger.warn("id=%s mp=%s %s" % (identifier,metadataPrefix,str(self.items)) )
         item = self.select_item( identifier )
         if (metadataPrefix not in item.records):
             raise CannotDisseminateFormat(metadataPrefix)
@@ -100,11 +101,22 @@ class Repository(object):
         """
         from_ds = Datestamp(args['from']) if 'from' in args else None
         until_ds = Datestamp(args['until']) if 'until' in args else None
+        if (from_ds and until_ds and
+            from_ds.granularity != until_ds.granularity):
+            raise BadArgument('Granularities of from and until arguments do not match.')
+        if (from_ds and until_ds and from_ds > until_ds):
+            raise NoRecordsMatch('Negative timespan, so no records can match')
+        if (until_ds and until_ds < self.earliest_ds):
+            raise NoRecordsMatch('Request for from before earliestDatestamp')
         set_spec = args['set'] if 'set' in args else None
         records = []
         for item in self.items.values():
-            for record in item.records.values():
-                records.append(record) # FIXME - no selection yet!
+            if ( (set_spec is None or item.in_set(set_spec)) and
+                 (metadataPrefix in item.records) ):
+                record = item.records[metadataPrefix]
+                if ( (from_ds is None or from_ds<=record.ds) and
+                     (until_ds is None or record.ds<=until_ds) ):
+                    records.append(record)
         return( records )
 
     def metadata_formats(self):
@@ -128,9 +140,9 @@ class Repository(object):
         """
         set_specs = set()
         for item in self.items.values():
-            for m in item.set_specs():
-                if (m not in set_specs):
-                    set_specs.add(m)
+            for set_spec in item.set_specs():
+                if (set_spec not in set_specs):
+                    set_specs.add(set_spec)
         if (len(set_specs)==0):
             raise NoSetHierarchy()
         return( sorted(set_specs) )
@@ -145,11 +157,22 @@ class Item(object):
         An item has zero or more records which must each be in a 
         different format. Stored as dict indexed by metadataPrefix.
 
-        An item may be in zero or more sets.
+        An item may be in zero or more sets. Set membership is expanded
+        to the complete set based on the hierarchy of colon (:) separated
+        paths.
         """
         self.identifier = identifier
         self.records = {}
-        self.sets = set() if sets is None else sets
+        self.sets = set() if sets is None else set(sets)
+        # Expand to include any parent sets
+        for s in list(self.sets): #make copy to iterate over
+            parts = s.split(':')
+            set_spec = parts.pop(0) #build set_spec from top level 
+            for part in parts:
+                if (set_spec not in self.sets):
+                    self.sets.add(set_spec)
+                set_spec = set_spec+':'+part
+                # don't need to add full s because already in sets
 
     def add_record(self, record ):
         """Add Record in specific metadataPrefix format to this Item."""
@@ -164,6 +187,14 @@ class Item(object):
         """List setSpecs for this item."""
         return( sorted(self.sets) )
 
+    def in_set(self, set_spec):
+        """True if this item is in the set set_spec.
+
+        Requires that any set hierarchy has already been expanded
+        as looks for exact set matches only.
+        """
+        return( set_spec in self.sets )
+
 
 class Record(object):
     """Record in OAI-PMH."""
@@ -172,6 +203,7 @@ class Record(object):
         """Create a Record object."""
         self.metadataPrefix = metadataPrefix
         self.datestamp = datestamp
+        self.ds = Datestamp(self.datestamp)
         self.status = status
         self.metadata = metadata
         self.about = set() if about is None else about
@@ -193,6 +225,11 @@ class Datestamp(object):
     """OAI-PMH specific datastamps."""
 
     def __init__(self, date_str=None, granularity=None):
+        """Initialize Datestamp from string.
+
+        If granularity is specified then this nust match else
+        an error is thrown.
+        """
         self.date_str = date_str
         self.granularity = granularity
         self.datetime = None # parsed value
@@ -215,7 +252,7 @@ class Datestamp(object):
                 date_str += 'T00:00:00Z'
                 granularity = 'days'
             try:
-                self.datetime = dateutil_parser.parse(date_str)
+                self.datetime = datetime.strptime(date_str,'%Y-%m-%dT%H:%M:%SZ')
             except ValueError as e:
                 raise BadArgument("Bad datetime %s: %s." % (sanitize(self.date_str), str(e)))
         else:
@@ -223,6 +260,29 @@ class Datestamp(object):
         if (self.granularity and self.granularity!=granularity):
             raise BadArgument("Bad datetime, expected %s granularity and got %s granularity" % (self.granularity,granularity))
         self.granularity = granularity
+
+    def __ge__(self, other):
+        """Greater than or equal to."""
+        if (self.datetime is None or
+            other.datetime is None):
+            raise TypeError("Cannot do comparison with uninitialized Datestamp")
+        return( self.datetime >= other.datetime )
+
+    def __gt__(self, other):
+        """Greater than."""
+        if (self.datetime is None or
+            other.datetime is None):
+            raise TypeError("Cannot do comparison with uninitialized Datestamp")
+        return( self.datetime > other.datetime )
+
+    def __le__(self, other):
+        """Less than or equal to."""
+        return( other.__ge__(self) )
+
+    def __lt__(self, other):
+        """Less than."""
+        return( other.__gt__(self) )
+
 
 class OAI_PMH_Exception(Exception):
     """Superclass for all OAI-PMH Exceptions.
@@ -259,7 +319,6 @@ class BadVerb(OAI_PMH_Exception):
             self.msg += " Bad verb (%s)." % sanitize(verb)
         if (msg is not None):
             self.msg += " " + msg
-       
 
 class BadResumptionToken(OAI_PMH_Exception):
     """badResumptionToken error."""
@@ -272,10 +331,12 @@ class BadResumptionToken(OAI_PMH_Exception):
 class CannotDisseminateFormat(OAI_PMH_Exception):
     """cannotDisseminateFormat error."""
 
-    def __init__(self):
+    def __init__(self, msg=None):
         """Initialize CannotDisseminateFormat."""
         self.code = "cannotDisseminateFormat"
         self.msg = "The metadata format identified by the value given for the metadataPrefix argument is not supported by the item or by the repository."
+        if (msg is not None):
+            self.msg += " " + msg
 
 class IdDoesNotExist(OAI_PMH_Exception):
     """idDoesNotExist error."""
@@ -288,10 +349,12 @@ class IdDoesNotExist(OAI_PMH_Exception):
 class NoRecordsMatch(OAI_PMH_Exception):
     """noRecordsMatch error."""
 
-    def __init__(self):
+    def __init__(self, msg=None):
         """Initialize NoRecordsMatch."""
         self.code = "noRecordsMatch"
         self.msg = "The combination of the values of the from, until, set and metadataPrefix arguments results in an empty list."
+        if (msg is not None):
+            self.msg += " " + msg
 
 class NoMetadataFormats(OAI_PMH_Exception):
     """noMetadataFormats error."""

@@ -46,6 +46,8 @@ def add_header(parent, record):
     TextSubElement( header, 'datestamp', record.datestamp )
     for set_spec in record.set_specs:
         TextSubElement( header, 'setSpec', set_spec )
+    if (record.status is not None):
+        TextSubElement( header, 'status', record.status )
 
 def add_metadata(parent, record):
     """Add OAI-PMH <metadata> block under parent in XML."""

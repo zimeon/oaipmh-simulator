@@ -9,13 +9,19 @@
       { "identifier": "item1",
       	"datestamp": "2001-01-01",
       	"metadataPrefix": "oai_dc",
-      	"metadata": "<md>something</md>",
-        "sets": "a"
+      	"metadata": "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\"><dc:title>Item number 1</dc:title></oai_dc:dc>",
+        "sets": [ "a" ]
+      },
+      { "identifier": "item1",
+      	"datestamp": "2001-01-03",
+      	"metadataPrefix": "xxx",
+      	"metadata": "<xxx:md xmlns:xxx=\"http://example.org/xxx\"><xxx:title>Item num 1</xxx:title></xxx:md>"
       },
       { "identifier": "item2",
       	"datestamp": "2001-01-02",
       	"metadataPrefix": "oai_dc",
-      	"metadata": "<md>something else</md>"
+      	"metadata": "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\"><dc:title>Item number 2</dc:title></oai_dc:dc>",
+        "sets": [ "b" ]
       }
   ]
 }
