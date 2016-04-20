@@ -31,6 +31,7 @@ class Repository(object):
         self.earliest_ds = None
         self.deleted_record = 'no'
         self.granularity = 'YYYY-MM-DD'
+        self.sets = {}
         # Used internally only:
         self.logger = logging.getLogger('oaipmh_simulator')
         self.compiled_exclude_files = []
@@ -45,6 +46,7 @@ class Repository(object):
                 self.earliest_ds = Datestamp(self.earliest_datestamp)
             self.deleted_record = cfg.get('deletedRecord')
             self.granularity = cfg.get('granularity')
+            self.sets = cfg.get('sets')
             for r in cfg.get('records',[]):
                 # Make for find Item
                 identifier = r.get('identifier')
@@ -146,6 +148,14 @@ class Repository(object):
         if (len(set_specs)==0):
             raise NoSetHierarchy()
         return( sorted(set_specs) )
+
+    def set_name_description(self, set_spec):
+        """Set name if defined."""
+        print("sets for %s" % (set_spec))
+        if (set_spec in self.sets):
+            return( self.sets[set_spec].get('name',None),
+                    self.sets[set_spec].get('description',None) )
+        return( None, None )
 
 
 class Item(object):

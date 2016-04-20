@@ -23,7 +23,7 @@ import sys
 
 from oaipmh_simulator._version import __version__
 from oaipmh_simulator.flask_app import get_flask_app, index_handler, oaipmh_baseurl_handler
-from oaipmh_simulator.repository import Repository, OAI_PMH_Exception, BadArgument, sanitize
+from oaipmh_simulator.repository import Repository
 
 def main():
     """Command line simulator setup."""
@@ -35,6 +35,9 @@ def main():
                               usage='usage: %prog [options]   (-h for help)',
                               version='%prog '+__version__ )
 
+    p.add_option('--host', default='127.0.0.1',
+                 help="Server host. WARNING - think twice before making this "
+                      "simumlator accessible on the network! (default %default)")
     p.add_option('--port', '-p', action='store', type='int', default=5555,
                  help='port to run on (default %default)')
     p.add_option('--path', action='store', default='oai',
@@ -57,15 +60,14 @@ def main():
     app.config['no_post'] = options.no_post
     app.config['port'] = options.port
     app.config['path'] = '/%s' % (options.path) # add leading slash
-    app.config['base_url'] = 'http://127.0.0.1:%d/%s' % (options.port, options.path)
+    app.config['base_url'] = 'http://%s:%d/%s' % (options.host, options.port, options.path)
 
     with open(options.repo_json, 'r') as fh:
         app.config['repo'] = Repository( cfg=json.load(fh) )
 
     app.add_url_rule('/', view_func=index_handler)
     app.add_url_rule(app.config['path'] , methods=("GET","POST"), view_func=oaipmh_baseurl_handler)
-    # to make externally visible set host='0.0.0.0'
-    app.run(port=options.port, debug=options.debug)
+    app.run(host=options.host, port=options.port, debug=options.debug)
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,10 @@
   "earliestDatestamp": "1999-01-01",
   "deletedRecord": "no",
   "granularity": "YYYY-MM-DD",
+  "sets": {
+      "a": { "name": "set-a", "description": "<zzz>This is set a.</zzz>" },
+      "b": { "name": "set-c" }
+      },
   "records": [
       { "identifier": "item1",
       	"datestamp": "2001-01-01",

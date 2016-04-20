@@ -1,6 +1,6 @@
 import unittest
 import datetime
-from oaipmh_simulator.repository import Repository, Item, Record, Datestamp, OAI_PMH_Exception, BadArgument, IdDoesNotExist, CannotDisseminateFormat, NoRecordsMatch, NoSetHierarchy
+from oaipmh_simulator.repository import Repository, Item, Record, Datestamp, OAI_PMH_Exception, BadArgument, BadVerb, BadResumptionToken, IdDoesNotExist, NoMetadataFormats, CannotDisseminateFormat, NoRecordsMatch, NoSetHierarchy
 
 # Some test data
 CFG1 = {
@@ -160,6 +160,22 @@ class TestRepository(unittest.TestCase):
         e = OAI_PMH_Exception()
         e.msg = 'abcdef'
         self.assertEqual( str(e), 'abcdef' )
+        e = BadArgument('buffalo')
+        self.assertEqual( e.code, 'badArgument' )
+        self.assertTrue( 'buffalo' in str(e) )
+        e = BadVerb()
+        self.assertEqual( e.code, 'badVerb' )
+        e = BadVerb('shrew')
+        self.assertEqual( e.code, 'badVerb' )
+        e = BadVerb(verb='<alert>')
+        self.assertEqual( e.code, 'badVerb' )
+        self.assertTrue( '(%3Calert%3E)' in str(e) )
+        e = BadResumptionToken('')
+        e = CannotDisseminateFormat('')
+        e = IdDoesNotExist('')
+        e = NoRecordsMatch('')
+        e = NoMetadataFormats()
+        e = NoSetHierarchy()
 
 if __name__ == '__main__':
     unittest.main()
